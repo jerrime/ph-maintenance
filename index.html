@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>We've Moved — jmglori.com</title>
+  <script>
+    /* ================= CLIMATE (by country) ================= */
+
+    // Months wrap around the year, e.g. span(11, 3) = Nov, Dec, Jan, Feb, Mar
+    const span = (a, b) => {
+      const out = [];
+      for (let m = a; ; m = (m % 12) + 1) { out.push(m); if (m === b) break; }
+      return out;
+    };
+
+    // Tropical countries: only two seasons, rainy months listed (every other month is sunny)
+    const RAINY_MONTHS = {};
+    const tropical = (months, codes) => codes.split(' ').forEach(c => (RAINY_MONTHS[c] = months));
+    tropical(span(6, 11),  'PH');
+    tropical(span(5, 10),  'TH VN KH LA MM LK');
+    tropical(span(6, 9),   'IN BD NP PK ML SN BF NE');
+    tropical(span(11, 3),  'ID MY SG BN TL BR');
+    tropical(span(4, 10),  'NG GH CI CM TG BJ LR SL GN');
+    tropical(span(3, 5).concat(span(10, 11)), 'KE TZ UG RW BI');
+    tropical(span(5, 10),  'CR PA NI HN GT SV BZ CU DO JM HT PR TT VE CO');
+
+    // Hot desert countries: sunny all year
+    const SUNNY_ALL = new Set('AE SA QA KW BH OM YE EG LY DJ'.split(' '));
+
+    // Countries not listed above default to sunny when the live weather isn't clear or rainy
+    function seasonFor(cc, date) {
+      const m = date.getMonth() + 1;
+      if (cc && SUNNY_ALL.has(cc)) return 'sunny';
+      if (cc && RAINY_MONTHS[cc]) return RAINY_MONTHS[cc].includes(m) ? 'rainy' : 'sunny';
+      return 'sunny';
+    }
+
+    /* ================= SOUND (synthesized with Web Audio, no files) ================= */
+
+    // Kept outside Alpine's reactive state: AudioContext objects break inside a Proxy
+    const sfx = { ctx: null, master: null, rain: null, wind: null, brown: null, on: false, season: 'sunny' };
+
+    function sfxInit() {
+      if (sfx.ctx) return true;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+
+      const ctx = new AC();
+      const len = ctx.sampleRate * 2;
+      const white = ctx.createBuffer(1, len, ctx.sampleRate);
+      const brown = ctx.createBuffer(1, len, ctx.sampleRate);
+      const w = white.getChannelData(0), b = brown.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) {
+        const n = Math.random() * 2 - 1;
+        w[i] = n;
+        last = (last + 0.02 * n) / 1.02;
+        b[i] = last * 3.5;
+      }
+      const loop = (buf, nodes) => {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        nodes.reduce((a, n) => (a.connect(n), n), src);
+        src.start();
+      };
+
+      const master = ctx.createGain();
+      master.gain.value = 0;
+      master.connect(ctx.destination);
+
+      // rain: hissing white noise
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1000;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000;
+      const rain = ctx.createGain(); rain.gain.value = 0;
+      loop(white, [hp, lp, rain, master]);
+
+      // wind: slowly swelling low noise
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.7;
+      const wind = ctx.createGain(); wind.gain.value = 0;
+      loop(brown, [bp, wind, master]);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.15;
+      const lfoDepth = ctx.createGain(); lfoDepth.gain.value = 0.02;
+      lfo.connect(lfoDepth); lfoDepth.connect(wind.gain); lfo.start();
+
+      Object.assign(sfx, { ctx, master, rain, wind, brown });
+
+      // birdsong for the sunny scene, every few seconds
+      const chirpLoop = () => { sfxChirp(); setTimeout(chirpLoop, 2000 + Math.random() * 5000); };
+      chirpLoop();
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) ctx.suspend(); else if (sfx.on) ctx.resume();
+      });
+      return true;
+    }
+
+    function sfxSet(on, season) {
+      if (!sfx.ctx) return;
+      const t = sfx.ctx.currentTime;
+      sfx.on = on;
+      sfx.season = season;
+      sfx.master.gain.setTargetAtTime(on ? 0.9 : 0, t, 0.3);
+      sfx.rain.gain.setTargetAtTime(season === 'rainy' ? 0.16 : 0, t, 0.8);
+      sfx.wind.gain.setTargetAtTime(season === 'rainy' ? 0.07 : 0.09, t, 0.8);
+    }
+
+    function sfxChirp() {
+      if (!sfx.on || sfx.season !== 'sunny') return;
+      const ctx = sfx.ctx;
+      const base = 2200 + Math.random() * 1800;
+      const n = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const t = ctx.currentTime + i * 0.16;
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(base, t);
+        o.frequency.exponentialRampToValueAtTime(base * 1.5, t + 0.08);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.05, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+        o.connect(g); g.connect(sfx.master);
+        o.start(t); o.stop(t + 0.12);
+      }
+    }
+
+    // Rolling thunder a moment after each lightning strike
+    function sfxThunder() {
+      if (!sfx.on || sfx.season !== 'rainy') return;
+      const ctx = sfx.ctx;
+      const t = ctx.currentTime + 0.4 + Math.random() * 0.8;
+      const src = ctx.createBufferSource();
+      src.buffer = sfx.brown;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(400, t);
+      lp.frequency.exponentialRampToValueAtTime(70, t + 2.5);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(1.3, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 3);
+      src.connect(lp); lp.connect(g); g.connect(sfx.master);
+      src.start(t, Math.random()); src.stop(t + 3.2);
+    }
+
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('app', () => ({
+        oldDomain: 'it-solutions.jmglori.com',
+        newDomain: 'jmglori.com',
+        ready: false,
+        dark: true,
+
+        country: null,
+        city: '',
+        coords: null,
+        weather: null,
+        mode: 'auto',
+        season: 'sunny',
+        seasons: [
+          { key: 'sunny', icon: '☀️', label: 'Sunny season' },
+          { key: 'rainy',  icon: '🌧️', label: 'Rainy season' },
+        ],
+
+        get caption() {
+          const s = this.seasons.find(x => x.key === this.season);
+          const where = [this.city, this.countryName].filter(Boolean).join(', ');
+          const temp = this.weather ? ' · ' + this.weather.temp + '°C' : '';
+          const live = this.mode === 'auto' && this.weather && this.weather.kind ? ' (live weather)' : '';
+          return (this.mode === 'auto' ? 'Auto' : 'Manual') + ' · ' + (s ? s.label : '') + live + temp + (where ? ' · ' + where : '');
+        },
+
+        get countryName() {
+          if (!this.country) return '';
+          try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(this.country); }
+          catch (e) { return this.country; }
+        },
+
+        init() {
+          let saved = null, savedMode = null;
+          try { saved = localStorage.getItem('theme'); savedMode = localStorage.getItem('season'); } catch (e) {}
+          this.dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (savedMode && (savedMode === 'auto' || this.seasons.some(s => s.key === savedMode))) this.mode = savedMode;
+          this.$watch('dark', v => {
+            try { localStorage.setItem('theme', v ? 'dark' : 'light'); } catch (e) {}
+          });
+
+          this.$watch('season', s => sfxSet(true, s));
+          this.startSound();
+
+          // Quick guess from the browser locale, then confirm with the visitor's real country
+          this.country = this.localeCountry();
+          this.refreshSeason();
+          this.detectLocation();
+
+          this.startScene(this.$refs.canvas);
+          setTimeout(() => (this.ready = true), 150);
+        },
+
+        toggle() { this.dark = !this.dark; },
+
+        // Sound is always on. Browsers keep audio silent until the visitor's first click, tap or
+        // key press, so it is armed now and starts the moment that first interaction happens.
+        startSound() {
+          if (!sfxInit()) return;
+          sfxSet(true, this.season);
+          const events = ['pointerdown', 'keydown', 'touchend', 'click'];
+          const unlock = () => {
+            sfx.ctx.resume();
+            events.forEach(e => window.removeEventListener(e, unlock));
+          };
+          events.forEach(e => window.addEventListener(e, unlock));
+          sfx.ctx.resume().catch(() => {});
+        },
+
+        setMode(m) {
+          this.mode = m;
+          try { localStorage.setItem('season', m); } catch (e) {}
+          this.refreshSeason();
+        },
+
+        refreshSeason() {
+          // Live weather wins; cloudy/fog/night falls back to the calendar season for the country
+          const auto = (this.weather && this.weather.kind) || seasonFor(this.country, new Date());
+          this.season = this.mode === 'auto' ? auto : this.mode;
+        },
+
+        localeCountry() {
+          for (const l of (navigator.languages || [navigator.language])) {
+            const m = /[-_]([A-Za-z]{2})$/.exec(l || '');
+            if (m) return m[1].toUpperCase();
+          }
+          return null;
+        },
+
+        async getJSON(url) {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 4000);
+          try {
+            const res = await fetch(url, { signal: ctrl.signal });
+            return await res.json();
+          } finally { clearTimeout(timer); }
+        },
+
+        // Visitor's location (from IP, no permission prompt), then live weather there
+        async detectLocation() {
+          try {
+            const geo = await this.getJSON('https://get.geojs.io/v1/ip/geo.json');
+            if (geo.country_code) this.country = geo.country_code;
+            if (geo.city) this.city = geo.city;
+            this.refreshSeason();
+            if (geo.latitude && geo.longitude) {
+              this.coords = { lat: geo.latitude, lon: geo.longitude };
+              await this.loadWeather();
+              setInterval(() => this.loadWeather(), 15 * 60 * 1000);
+            }
+          } catch (e) { /* keep the locale guess and the calendar season */ }
+        },
+
+        async loadWeather() {
+          if (!this.coords) return;
+          try {
+            const { lat, lon } = this.coords;
+            const data = await this.getJSON(
+              'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+              '&current=temperature_2m,weather_code,is_day&timezone=auto'
+            );
+            const c = data.current;
+            if (!c) return;
+            const code = c.weather_code;
+            let kind = null;
+            if ((code >= 51 && code <= 67) || (code >= 71 && code <= 77) || (code >= 80 && code <= 86) || code >= 95) kind = 'rainy';
+            else if (code <= 1 && c.is_day) kind = 'sunny';
+            this.weather = { kind, temp: Math.round(c.temperature_2m) };
+            this.refreshSeason();
+          } catch (e) { /* keep the calendar season */ }
+        },
+
+        /* ================= SCENE ================= */
+
+        startScene(canvas) {
+          const ctx = canvas.getContext('2d');
+          const self = this;
+          const mouse = { x: -2000, y: -2000 };
+          let w = 0, h = 0;
+          let items = [];
+          let particles = [];
+          let current = null;
+          let T = null;
+          let switching = false; // true while the scene fades out/in for a season change
+          let flash = 0;       // lightning flash brightness (0..1)
+          let bolt = null;
+          let nextStrike = 0;
+          let echoAt = 0;
+          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+          const rand = ([a, b]) => a + Math.random() * (b - a);
+
+          /* ---------- shapes (drawn around 0,0) ---------- */
+
+          const drawDrop = (r, c) => {
+            ctx.beginPath();
+            ctx.moveTo(0, -r * 1.8);
+            ctx.bezierCurveTo(r * 0.2, -r * 0.8, r, -r * 0.2, r, r * 0.5);
+            ctx.arc(0, r * 0.5, r, 0, Math.PI, false);
+            ctx.bezierCurveTo(-r, -r * 0.2, -r * 0.2, -r * 0.8, 0, -r * 1.8);
+            const g = ctx.createLinearGradient(0, -r * 1.8, 0, r * 1.5);
+            g.addColorStop(0, c.light);
+            g.addColorStop(1, c.base);
+            ctx.fillStyle = g;
+            ctx.fill();
+          };
+
+          /* ---------- one theme per season ---------- */
+
+          const themes = {
+            // Sun with rotating rays, drifting clouds (two depth layers) and twinkling sparkles
+            sunny: {
+              sun: true,
+              build: () => [
+                ...Array.from({ length: 9 }, () => new Cloud(0)),
+                ...Array.from({ length: 7 }, () => new Cloud(1)),
+                ...Array.from({ length: 12 }, () => new Wind()),
+                ...Array.from({ length: 36 }, () => new Sparkle()),
+              ],
+            },
+            rainy: {
+              // Drops first, then wind, then the dark clouds on top so the rain falls out from under them
+              storm: true,
+              build: () => [
+                ...Array.from({ length: 150 }, () => new Item(themes.rainy, true)),
+                ...Array.from({ length: 8 }, () => new Wind()),
+                ...Array.from({ length: 36 }, () => new StormCloud(1)),
+              ],
+              dir: 1, r: [3, 6], speed: [4.9, 9.1], sway: 0, swayF: 1, wind: 2,
+              spin: [0, 0], wobble: [0, 0], rock: 0, alpha: 0.85, draw: drawDrop, tilt: true, hit: 2.5, pad: 12, pgrav: 0.25,
+              colors: [
+                { base: '#2563eb', light: '#93c5fd', dark: '#1e3a8a' },
+                { base: '#0ea5e9', light: '#bae6fd', dark: '#075985' },
+              ],
+            },
+          };
+
+          /* ---------- particles & items ---------- */
+
+          class Particle {
+            constructor(x, y, color, gravity) {
+              this.x = x; this.y = y; this.color = color;
+              this.size = Math.random() * 3 + 1;
+              this.speedX = (Math.random() - 0.5) * 12;
+              this.speedY = (Math.random() - 0.5) * 12;
+              this.gravity = gravity;
+              this.opacity = 1;
+            }
+            update() {
+              this.x += this.speedX;
+              this.y += this.speedY;
+              this.speedY += this.gravity;
+              this.opacity -= 0.025;
+            }
+            draw() {
+              ctx.save();
+              ctx.globalAlpha = Math.max(0, this.opacity);
+              ctx.fillStyle = this.color;
+              ctx.beginPath();
+              ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+
+          class Item {
+            constructor(theme, first) { this.T = theme; this.init(first); }
+
+            init(first) {
+              const T = this.T;
+              this.r = rand(T.r);
+              this.speed = rand(T.speed);
+              this.x = Math.random() * (w + 200) - 100;
+              this.y = first
+                ? Math.random() * h
+                : T.dir > 0
+                  ? -this.r * 2 - Math.random() * 200
+                  : h + this.r * 2 + Math.random() * 200;
+              this.colorSet = T.colors[Math.floor(Math.random() * T.colors.length)];
+              this.wobbleSpeed = rand(T.wobble);
+              this.angle = Math.random() * Math.PI * 2;
+              this.rot = T.tilt ? -Math.atan2(T.wind, this.speed) : Math.random() * Math.PI * 2;
+              this.spin = rand(T.spin);
+              this.popped = false;
+            }
+
+            pop() {
+              if (this.popped) return;
+              this.popped = true;
+              const n = this.T.tilt ? 8 : 20;
+              for (let i = 0; i < n; i++) {
+                particles.push(new Particle(this.x, this.y, this.colorSet.base, this.T.pgrav ?? 0.2));
+              }
+              setTimeout(() => this.init(false), 1000 + Math.random() * 1000);
+            }
+
+            update() {
+              if (this.popped) return;
+              const T = this.T;
+
+              this.y += T.dir * this.speed;
+              this.angle += this.wobbleSpeed;
+              this.x += Math.sin(this.angle * T.swayF) * T.sway + T.wind;
+              this.rot += this.spin;
+
+              if (this.x > w + 120) this.x = -120;
+              else if (this.x < -120) this.x = w + 120;
+
+              const dx = this.x - mouse.x;
+              const dy = this.y - mouse.y;
+              if (Math.hypot(dx, dy) < this.r * (T.hit || 1.1) + (T.pad || 10)) this.pop();
+
+              if (T.dir > 0 ? this.y > h + this.r * 2 + 40 : this.y < -this.r * 2 - 40) this.init(false);
+
+              this.draw();
+            }
+
+            draw() {
+              const T = this.T;
+              ctx.save();
+              ctx.translate(this.x, this.y);
+              ctx.rotate(this.rot + Math.sin(this.angle) * T.rock);
+              ctx.globalAlpha = T.alpha;
+              T.draw(this.r, this.colorSet);
+              ctx.restore();
+            }
+          }
+
+          /* ---------- sunny: clouds, sparkles, sun ---------- */
+
+          // [x, y, radius] puffs that make up a cloud outline
+          const CLOUD_PUFFS = [
+            [-50, 8, 18], [-24, 10, 22], [6, 10, 24], [34, 10, 22], [56, 10, 16],
+            [-26, -6, 26], [4, -18, 32], [34, -6, 24],
+          ];
+
+          class Cloud {
+            constructor(layer) { this.layer = layer; this.init(true); }
+
+            init(first) {
+              const back = this.layer === 0;
+              this.s = back ? rand([0.25, 0.4]) : rand([0.45, 0.7]);
+              this.speed = back ? rand([0.3, 0.7]) : rand([0.75, 1.4]);
+              this.alpha = back ? 0.55 : 0.95;
+              this.x = first ? Math.random() * w : -160 * this.s - Math.random() * 300;
+              this.y = h * (0.06 + Math.random() * 0.5);
+              this.phase = Math.random() * Math.PI * 2;
+              this.popped = false;
+            }
+
+            pop() {
+              if (this.popped) return;
+              this.popped = true;
+              for (let i = 0; i < 14; i++) {
+                particles.push(new Particle(
+                  this.x + (Math.random() - 0.5) * 60 * this.s, this.y,
+                  self.dark ? '#e0f2fe' : '#60a5fa', 0.02
+                ));
+              }
+              setTimeout(() => this.init(false), 1500 + Math.random() * 1500);
+            }
+
+            update() {
+              if (this.popped) return;
+              this.x += this.speed;
+              this.phase += 0.008;
+              if (Math.hypot(this.x - mouse.x, this.y - mouse.y) < 48 * this.s + 10) this.pop();
+              if (this.x > w + 180 * this.s) this.init(false);
+              this.draw();
+            }
+
+            draw() {
+              const dark = self.dark;
+              ctx.save();
+              ctx.translate(this.x, this.y + Math.sin(this.phase) * 4);
+              ctx.scale(this.s, this.s);
+              ctx.globalAlpha = this.alpha;
+              const g = ctx.createLinearGradient(0, -34, 0, 24);
+              g.addColorStop(0, dark ? '#f0f9ff' : '#ffffff');
+              g.addColorStop(1, dark ? '#7dd3fc' : '#bfdbfe');
+              ctx.fillStyle = g;
+              ctx.shadowColor = dark ? 'rgba(125,211,252,.6)' : 'rgba(37,99,235,.25)';
+              ctx.shadowBlur = 18;
+              ctx.beginPath();
+              CLOUD_PUFFS.forEach(([cx, cy, r]) => { ctx.moveTo(cx + r, cy); ctx.arc(cx, cy, r, 0, Math.PI * 2); });
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+
+          // Big dark storm clouds along the top of the screen; they light up during lightning
+          class StormCloud extends Cloud {
+            init(first) {
+              this.s = rand([1.1, 1.9]);
+              this.speed = rand([0.3, 0.75]);
+              this.alpha = 0.97;
+              this.x = Math.random() * w;            // always appears inside the screen
+              this.fade = first ? 1 : 0;             // new clouds fade in instead of popping in
+              this.y = h * Math.random() * 0.1;
+              this.phase = Math.random() * Math.PI * 2;
+              this.popped = false;
+            }
+
+            pop() {
+              if (this.popped) return;
+              this.popped = true;
+              for (let i = 0; i < 24; i++) {
+                particles.push(new Particle(
+                  this.x + (Math.random() - 0.5) * 120 * this.s, this.y + Math.random() * 20,
+                  Math.random() < 0.5 ? '#64748b' : '#94a3b8', 0.15
+                ));
+              }
+              setTimeout(() => this.init(false), 2000 + Math.random() * 2000);
+            }
+
+            draw() {
+              const dark = self.dark;
+              ctx.save();
+              ctx.translate(this.x, this.y + Math.sin(this.phase) * 3);
+              ctx.scale(this.s, this.s);
+              this.fade = Math.min(1, this.fade + 0.02);
+              ctx.globalAlpha = this.alpha * this.fade;
+              const g = ctx.createLinearGradient(0, -34, 0, 24);
+              g.addColorStop(0, dark ? '#475569' : '#64748b');
+              g.addColorStop(1, dark ? '#1e293b' : '#334155');
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              CLOUD_PUFFS.forEach(([cx, cy, r]) => { ctx.moveTo(cx + r, cy); ctx.arc(cx, cy, r, 0, Math.PI * 2); });
+              ctx.fill();
+              if (flash > 0.05) {
+                ctx.globalAlpha = Math.min(1, flash * 0.9);
+                ctx.fillStyle = '#c7d2fe';
+                ctx.fill();
+              }
+              ctx.restore();
+            }
+          }
+
+          // Fast, thin wind swooshes that streak across the sky, some with a little curl
+          class Wind {
+            constructor() { this.init(true); }
+
+            init(first) {
+              this.len = rand([90, 220]);
+              this.speed = rand([3, 6]);
+              this.x = first ? Math.random() * w : -this.len - Math.random() * 400;
+              this.y = h * (0.1 + Math.random() * 0.8);
+              this.amp = rand([4, 10]);
+              this.phase = Math.random() * Math.PI * 2;
+              this.curl = Math.random() < 0.5;
+              this.alpha = rand([0.25, 0.5]);
+              this.lw = rand([1, 2]);
+            }
+
+            pop() {}
+
+            update() {
+              this.x += this.speed;
+              this.phase += 0.05;
+              if (this.x > w + 50) this.init(false);
+
+              const p = Math.min(1, Math.max(0, (this.x + this.len / 2) / w));
+              const wave = Math.sin(this.phase) * this.amp;
+              const rgb = self.dark ? '224,242,254' : '59,130,246';
+
+              ctx.save();
+              ctx.translate(this.x, this.y);
+              ctx.globalAlpha = this.alpha * Math.sin(p * Math.PI);
+              const g = ctx.createLinearGradient(0, 0, this.len, 0);
+              g.addColorStop(0, 'rgba(' + rgb + ',0)');
+              g.addColorStop(0.5, 'rgba(' + rgb + ',1)');
+              g.addColorStop(1, 'rgba(' + rgb + ',1)');
+              ctx.strokeStyle = g;
+              ctx.lineWidth = this.lw;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.bezierCurveTo(this.len * 0.3, -wave, this.len * 0.6, wave, this.len, 0);
+              if (this.curl) {
+                const e = this.len;
+                ctx.bezierCurveTo(e + 14, -2, e + 16, -14, e + 6, -14);
+                ctx.bezierCurveTo(e - 2, -14, e - 2, -6, e + 4, -6);
+              }
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+
+          class Sparkle {
+            constructor() { this.init(); }
+
+            init() {
+              this.x = Math.random() * w;
+              this.y = Math.random() * h * 0.8;
+              this.size = rand([3, 7]);
+              this.phase = Math.random() * Math.PI * 2;
+              this.rate = rand([0.02, 0.05]);
+              this.vx = rand([0.05, 0.2]);
+              this.vy = rand([-0.2, -0.05]);
+            }
+
+            pop() {}
+
+            update() {
+              this.phase += this.rate;
+              this.x += this.vx;
+              this.y += this.vy;
+              if (this.x > w + 20) this.x = -20;
+              if (this.y < -20) this.y = h * 0.8;
+
+              const a = (Math.sin(this.phase) + 1) / 2;
+              const s = this.size * (0.4 + 0.6 * a);
+              ctx.save();
+              ctx.translate(this.x, this.y);
+              ctx.globalAlpha = a;
+              ctx.fillStyle = self.dark ? '#fef9c3' : '#f59e0b';
+              ctx.shadowColor = '#fde047';
+              ctx.shadowBlur = 10;
+              ctx.beginPath();
+              ctx.moveTo(0, -s * 2);
+              ctx.quadraticCurveTo(0, 0, s * 2, 0);
+              ctx.quadraticCurveTo(0, 0, 0, s * 2);
+              ctx.quadraticCurveTo(0, 0, -s * 2, 0);
+              ctx.quadraticCurveTo(0, 0, 0, -s * 2);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+
+          const drawSun = () => {
+            const t = performance.now();
+            const dark = self.dark;
+            const sx = w * 0.12;
+            const sy = h * 0.14;
+            const R = Math.max(36, Math.min(w, h) * 0.065) * (1 + 0.03 * Math.sin(t * 0.002));
+            const L = Math.hypot(w, h) * 1.1;
+
+            // soft halo
+            let g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 7);
+            g.addColorStop(0, 'rgba(253,224,71,' + (dark ? 0.38 : 0.55) + ')');
+            g.addColorStop(1, 'rgba(253,224,71,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, w, h);
+
+            // slowly rotating, pulsing rays
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.rotate(t * 0.00004);
+            g = ctx.createLinearGradient(0, 0, L, 0);
+            g.addColorStop(0, 'rgba(253,230,138,.9)');
+            g.addColorStop(1, 'rgba(253,230,138,0)');
+            ctx.fillStyle = g;
+            const N = 14;
+            for (let i = 0; i < N; i++) {
+              const half = 0.045 + 0.02 * Math.sin(t * 0.0007 + i * 1.7);
+              ctx.save();
+              ctx.rotate((i * Math.PI * 2) / N);
+              ctx.globalAlpha = (dark ? 0.2 : 0.3) * (0.55 + 0.45 * Math.sin(t * 0.0009 + i * 1.3));
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.lineTo(L, -L * Math.tan(half));
+              ctx.lineTo(L, L * Math.tan(half));
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            }
+            ctx.restore();
+
+            // sun disc
+            g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+            g.addColorStop(0, '#fffbe6');
+            g.addColorStop(0.6, '#fde047');
+            g.addColorStop(1, '#f59e0b');
+            ctx.save();
+            ctx.fillStyle = g;
+            ctx.shadowColor = 'rgba(253,224,71,.9)';
+            ctx.shadowBlur = 40;
+            ctx.beginPath();
+            ctx.arc(sx, sy, R, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          };
+
+          /* ---------- rainy: lightning ---------- */
+
+          const strike = () => {
+            let x = w * (0.15 + Math.random() * 0.7);
+            let y = h * 0.06;
+            const endY = h * (0.65 + Math.random() * 0.3);
+            const pts = [[x, y]];
+            const branches = [];
+            while (y < endY) {
+              y += rand([18, 40]);
+              x += rand([-28, 28]);
+              pts.push([x, y]);
+              if (Math.random() < 0.3) {
+                let bx = x, by = y;
+                const b = [[bx, by]];
+                const dirX = Math.random() < 0.5 ? -1 : 1;
+                for (let k = 0; k < 4; k++) {
+                  by += rand([14, 28]);
+                  bx += rand([10, 35]) * dirX;
+                  b.push([bx, by]);
+                }
+                branches.push(b);
+              }
+            }
+            bolt = { pts, branches, life: 1 };
+            flash = 1;
+            echoAt = performance.now() + 120;
+            sfxThunder();
+          };
+
+          const drawLightning = () => {
+            if (!T.storm || reduceMotion) return;
+            const now = performance.now();
+            if (now > nextStrike) { strike(); nextStrike = now + rand([3500, 9000]); }
+            if (echoAt && now > echoAt) { flash = Math.max(flash, 0.85); echoAt = 0; }
+
+            if (flash > 0.01) {
+              ctx.fillStyle = self.dark
+                ? 'rgba(224,231,255,' + flash * 0.9 + ')'
+                : 'rgba(255,255,255,' + flash * 0.97 + ')';
+              ctx.fillRect(0, 0, w, h);
+              flash *= 0.92;
+            }
+
+            if (bolt) {
+              const trace = p => {
+                ctx.beginPath();
+                ctx.moveTo(p[0][0], p[0][1]);
+                for (let i = 1; i < p.length; i++) ctx.lineTo(p[i][0], p[i][1]);
+                ctx.stroke();
+              };
+              ctx.save();
+              ctx.globalAlpha = Math.min(1, bolt.life * 1.5);
+              ctx.lineJoin = 'round';
+              ctx.lineCap = 'round';
+              ctx.shadowColor = '#a5b4fc';
+              ctx.shadowBlur = 70;
+              ctx.strokeStyle = '#c7d2fe';
+              ctx.lineWidth = 8; trace(bolt.pts);
+              ctx.lineWidth = 4; bolt.branches.forEach(trace);
+              ctx.shadowBlur = 0;
+              ctx.strokeStyle = '#fff';
+              ctx.lineWidth = 3.5; trace(bolt.pts);
+              ctx.lineWidth = 1.8; bolt.branches.forEach(trace);
+              ctx.restore();
+              bolt.life -= 0.06;
+              if (bolt.life <= 0) bolt = null;
+            }
+          };
+
+          /* ---------- loop ---------- */
+
+          const rebuild = () => {
+            current = self.season;
+            T = themes[current];
+            flash = 0;
+            bolt = null;
+            echoAt = 0;
+            nextStrike = performance.now() + 1500;
+            items = T.build ? T.build() : Array.from({ length: T.count }, () => new Item(T, true));
+            particles = [];
+          };
+
+          const resize = () => {
+            const dpr = window.devicePixelRatio || 1;
+            w = window.innerWidth;
+            h = window.innerHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            rebuild();
+          };
+
+          const animate = () => {
+            // Fade out (.25s), swap the scene, fade back in (.25s) = .5s in total
+            if (self.season !== current && !switching) {
+              switching = true;
+              canvas.style.opacity = '0';
+              setTimeout(() => {
+                rebuild();
+                canvas.style.opacity = '1';
+                switching = false;
+              }, 250);
+            }
+
+            ctx.clearRect(0, 0, w, h);
+
+            if (T.sun) drawSun();
+
+            particles = particles.filter(p => p.opacity > 0);
+            particles.forEach(p => { p.update(); p.draw(); });
+            items.forEach(i => i.update());
+            drawLightning();
+
+            requestAnimationFrame(animate);
+          };
+
+          window.addEventListener('resize', resize);
+          window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+          window.addEventListener('touchmove', e => {
+            const t = e.touches[0];
+            mouse.x = t.clientX; mouse.y = t.clientY;
+          }, { passive: true });
+
+          resize();
+          animate();
+        },
+      }));
+    });
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    :root {
+      --bg-from: #eff6ff;
+      --bg-via: #dbeafe;
+      --bg-to: #bfdbfe;
+      --card: rgba(255, 255, 255, 0.75);
+      --card-border: rgba(37, 99, 235, 0.25);
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --old: #dc2626;
+      --new: #0369a1;
+      --glow: rgba(37, 99, 235, 0.55);
+      --glow-soft: rgba(56, 189, 248, 0.35);
+    }
+    :root.dark {
+      --bg-from: #1e3a8a;
+      --bg-via: #0b1535;
+      --bg-to: #020617;
+      --card: rgba(15, 23, 42, 0.7);
+      --card-border: rgba(96, 165, 250, 0.3);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --old: #f87171;
+      --new: #7dd3fc;
+      --glow: rgba(59, 130, 246, 0.8);
+      --glow-soft: rgba(125, 211, 252, 0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at center, var(--bg-from), var(--bg-via), var(--bg-to));
+      transition: background .4s, color .4s;
+    }
+
+    canvas { position: fixed; inset: 0; display: block; z-index: 0; transition: opacity .25s ease; }
+
+    .stage {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      pointer-events: none;
+    }
+
+    .card {
+      pointer-events: auto;
+      position: relative;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      padding: 56px 36px 40px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 28px;
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      box-shadow: 0 30px 80px -20px rgba(30, 64, 175, 0.35),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      opacity: 0;
+      transform: translateY(28px) scale(.97);
+      transition: background .4s, border-color .4s,
+                  opacity .9s ease, transform 1s cubic-bezier(.16, 1, .3, 1);
+      animation: float 7s ease-in-out 1.2s infinite;
+    }
+    .card.in { opacity: 1; transform: none; }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      z-index: -1;
+      border-radius: inherit;
+      background: linear-gradient(135deg, var(--glow), var(--glow-soft), var(--glow));
+      filter: blur(28px);
+      opacity: .45;
+      animation: glow 4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes glow {
+      0%, 100% { opacity: .3; filter: blur(24px); }
+      50% { opacity: .65; filter: blur(38px); }
+    }
+
+    @keyframes float {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 0 -8px; }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity .8s ease, transform .8s cubic-bezier(.16, 1, .3, 1);
+      transition-delay: calc(.25s + var(--i) * .12s);
+    }
+    .card.in .reveal { opacity: 1; transform: none; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      margin-bottom: 26px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--new);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      box-shadow: 0 0 18px -2px var(--glow-soft), inset 0 0 12px -4px var(--glow-soft);
+      text-shadow: 0 0 12px var(--glow-soft);
+    }
+    .badge i {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s ease-out infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 6px 0 var(--glow), 0 0 0 0 var(--accent); }
+      100% { box-shadow: 0 0 10px 10px transparent; }
+    }
+
+    h1 {
+      font-size: clamp(2.25rem, 7vw, 3.25rem);
+      font-weight: 700;
+      letter-spacing: -.03em;
+      line-height: 1.05;
+      margin-bottom: 20px;
+      background: linear-gradient(120deg, var(--text) 30%, var(--accent));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 18px var(--glow-soft));
+    }
+
+    p { margin: 0; }
+    .old { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--old); opacity: .8; }
+    .new { color: var(--new); font-weight: 600; }
+    .arrow { margin: 0 10px; color: var(--muted); }
+    .sub {
+      max-width: 38ch;
+      margin: 16px auto 32px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: .98rem;
+    }
+
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #fff;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: 0 0 24px var(--glow), 0 10px 30px -8px var(--accent);
+      transition: opacity .8s ease, transform .35s cubic-bezier(.16, 1, .3, 1), box-shadow .35s;
+    }
+    a.btn svg { width: 18px; height: 18px; transition: transform .35s cubic-bezier(.16, 1, .3, 1); }
+    .card.in a.btn:hover { transform: translateY(-3px); box-shadow: 0 0 40px var(--glow), 0 16px 36px -8px var(--accent); transition-delay: 0s; }
+    a.btn:hover svg { transform: translateX(4px); }
+
+    /* season switcher */
+    .seasons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 32px;
+    }
+    .chip {
+      min-width: 36px;
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: transform .25s, box-shadow .25s, background .25s, color .25s;
+    }
+    .chip.auto {
+      padding: 0 14px;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .chip:hover { transform: translateY(-2px); box-shadow: 0 0 14px -2px var(--glow-soft); }
+    .chip.on {
+      background: var(--accent);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 0 18px var(--glow);
+    }
+    .where {
+      margin-top: 14px;
+      font-size: .8rem;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--card-border);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      transition: color .3s, transform .3s;
+    }
+    .theme-toggle { box-shadow: 0 0 14px -2px var(--glow-soft); }
+    .theme-toggle:hover { color: var(--accent); transform: rotate(20deg); box-shadow: 0 0 20px var(--glow); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    @media (prefers-reduced-motion: reduce) {
+      .card { animation: none; }
+      .card, .reveal { transition-duration: .01s; transition-delay: 0s; }
+    }
+  </style>
+</head>
+<body x-data="app" :class="{ dark }" x-effect="document.documentElement.classList.toggle('dark', dark)">
+  <canvas x-ref="canvas" aria-hidden="true"></canvas>
+
+  <main class="stage">
+    <section class="card" :class="{ in: ready }">
+      <button class="theme-toggle" @click="toggle" :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'">
+        <svg x-show="dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg x-show="!dark" x-cloak viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <span class="badge reveal" style="--i:0"><i></i>Notice</span>
+      <h1 class="reveal" style="--i:1">We've moved.</h1>
+      <p class="reveal" style="--i:2">
+        <span class="old" x-text="oldDomain"></span>
+        <span class="arrow" aria-hidden="true">→</span>
+        <span class="new" x-text="newDomain"></span>
+      </p>
+      <p class="sub reveal" style="--i:3">
+        Our site has been transferred to its new home. Everything you need is waiting there.
+      </p>
+      <a class="btn reveal" style="--i:4" :href="'https://' + newDomain">
+        <span x-text="'Visit ' + newDomain"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <div class="seasons reveal" style="--i:5" role="group" aria-label="Background season">
+        <button type="button" class="chip auto" :class="{ on: mode === 'auto' }" :aria-pressed="mode === 'auto'" @click="setMode('auto')">Auto</button>
+        <template x-for="s in seasons" :key="s.key">
+          <button type="button" class="chip" :class="{ on: mode === s.key }" :title="s.label" :aria-label="s.label"
+                  :aria-pressed="mode === s.key" @click="setMode(s.key)" x-text="s.icon"></button>
+        </template>
+      </div>
+      <p class="where reveal" style="--i:6" x-text="caption"></p>
+    </section>
+  </main>
+</body>
+</html>
