@@ -1,0 +1,320 @@
+/* Maintenance page — animated scene, glass card, theme toggle. Scoped under .mnt so nothing leaks into the site. */
+.mnt {
+  --bg-from: #eff6ff;
+  --bg-via: #dbeafe;
+  --bg-to: #bfdbfe;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-border: rgba(37, 99, 235, 0.25);
+  --mt-text: #0f172a;
+  --mt-muted: #475569;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent2: #0369a1;
+  --glow: rgba(37, 99, 235, 0.55);
+  --glow-soft: rgba(56, 189, 248, 0.35);
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--mt-text);
+  background: radial-gradient(circle at center, var(--bg-from), var(--bg-via), var(--bg-to));
+  transition: background 0.4s, color 0.4s;
+}
+.mnt.night {
+  --bg-from: #1e3a8a;
+  --bg-via: #0b1535;
+  --bg-to: #020617;
+  --card: rgba(15, 23, 42, 0.7);
+  --card-border: rgba(96, 165, 250, 0.3);
+  --mt-text: #e2e8f0;
+  --mt-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent2: #7dd3fc;
+  --glow: rgba(59, 130, 246, 0.8);
+  --glow-soft: rgba(125, 211, 252, 0.5);
+}
+
+/* Night: dark text on the card. The card glass is pinned light so the text stays readable whatever the site theme is. */
+.mnt.night .mnt-card {
+  --mt-text: #0f172a;
+  --mt-muted: #1e293b;
+  --accent2: #0c4a6e;
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(255, 255, 255, 0.7);
+  color: var(--mt-text);
+}
+
+.mnt-canvas { position: fixed; inset: 0; display: block; z-index: 0; transition: opacity 0.25s ease; }
+
+.mnt-stage {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.mnt-card {
+  pointer-events: auto;
+  position: relative;
+  max-width: 560px;
+  width: 100%;
+  text-align: center;
+  padding: 2rem 1rem;
+  background: var(--lg-bg);
+  border: 1px solid var(--lg-border);
+  border-radius: 32px;
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.04);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.04);
+  box-shadow: var(--lg-shadow);
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+  transition: background 0.4s, border-color 0.4s, opacity 0.9s ease, transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: mnt-float 7s ease-in-out 1.2s infinite;
+}
+.mnt-card.in { opacity: 1; transform: none; }
+
+.mnt-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--glow), var(--glow-soft), var(--glow));
+  filter: blur(28px);
+  opacity: 0.45;
+  animation: mnt-glow 4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes mnt-glow {
+  0%, 100% { opacity: 0.3; filter: blur(24px); }
+  50% { opacity: 0.65; filter: blur(38px); }
+}
+@keyframes mnt-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
+}
+
+.mnt-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(0.25s + var(--i) * 0.12s);
+}
+.mnt-card.in .mnt-reveal { opacity: 1; transform: none; }
+
+.mnt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  margin-bottom: 26px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  box-shadow: 0 0 18px -2px var(--glow-soft), inset 0 0 12px -4px var(--glow-soft);
+  text-shadow: 0 0 12px var(--glow-soft);
+}
+.mnt-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: mnt-pulse 2s ease-out infinite;
+}
+@keyframes mnt-pulse {
+  0% { box-shadow: 0 0 6px 0 var(--glow), 0 0 0 0 var(--accent); }
+  100% { box-shadow: 0 0 10px 10px transparent; }
+}
+
+.mnt-title {
+  margin: 0;
+  padding-bottom: 20px;
+  font-size: clamp(1.4rem, 5vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  background: linear-gradient(120deg, var(--mt-text) 30%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px var(--glow-soft));
+}
+
+.mnt-sub {
+  width: 100%;
+  padding-inline: 2rem;
+  padding-bottom: 1rem;
+  margin: 8px 0 14px;
+  color: var(--mt-muted);
+  line-height: 1.7;
+  font-size: 0.88rem;
+}
+
+.mnt-contacts {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 28px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mt-muted);
+}
+.mnt-contacts a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.mnt-contacts a:hover { color: var(--accent); }
+.mnt-contacts svg { width: 14px; height: 14px; }
+
+a.mnt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: #fff;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
+  box-shadow: 0 0 24px var(--glow), 0 10px 30px -8px var(--accent);
+  transition: opacity 0.8s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s;
+}
+a.mnt-btn svg { width: 18px; height: 18px; transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.mnt-card.in a.mnt-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 40px var(--glow), 0 16px 36px -8px var(--accent);
+  transition-delay: 0s;
+}
+a.mnt-btn:hover svg { transform: translateX(4px); }
+
+.mnt-seasons {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mnt-chip {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mt-text);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.25s, box-shadow 0.25s, background 0.25s, color 0.25s;
+}
+.mnt-chip.auto {
+  padding: 0 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mnt-chip:hover { transform: translateY(-2px); box-shadow: 0 0 14px -2px var(--glow-soft); }
+.mnt-chip.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 0 18px var(--glow);
+}
+
+.mnt-theme {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--card-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--mt-text);
+  cursor: pointer;
+  box-shadow: 0 0 14px -2px var(--glow-soft);
+  transition: color 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+.mnt-theme:hover { color: var(--accent); transform: rotate(20deg); box-shadow: 0 0 20px var(--glow); }
+.mnt-theme svg { width: 18px; height: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mnt-card { animation: none; }
+  .mnt-card, .mnt-reveal { transition-duration: 0.01s; transition-delay: 0s; }
+}
+
+/* Sign-in card over the scene: a firmer backing in each theme so the form stays readable whatever
+   the moon, sun or clouds behind it are doing. */
+.mnt .mnt-login-card {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 60px -20px rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+html.dark .mnt .mnt-login-card {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(147, 197, 253, 0.3);
+}
+
+/* ---- "We've moved" colour coding: red = old, green = new ---- */
+.mnt-move { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 22px 0 6px; }
+.mnt-move > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; border-radius: 14px; text-align: left; border: 1px solid; }
+.mnt-move small { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.mnt-move b { font-size: 16px; font-weight: 700; }
+.mnt-old { color: #dc2626; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.45); }
+.mnt-old b { text-decoration: line-through; text-decoration-thickness: 2px; }
+.mnt-new { color: #16a34a; background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.55); }
+.mnt-move-arrow { color: var(--mt-muted); }
+html.dark .mnt-old { color: #fca5a5; }
+html.dark .mnt-new { color: #86efac; }
+
+.mnt-steps { list-style: none; margin: 20px auto 0; padding: 0; display: grid; gap: 10px; max-width: 30rem; text-align: left; }
+.mnt-steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.45; color: var(--mt-text); }
+.mnt-steps i { flex: none; width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 700; color: #fff; }
+.mnt-steps .s1 { background: #2563eb; }
+.mnt-steps .s2 { background: #d97706; }
+.mnt-steps .s3 { background: #16a34a; }
+.mnt-help { margin: 20px 0 0; font-size: 14px; color: var(--mt-muted); }
+
+/* ---- Higher-contrast colours: solid fills with white text ---- */
+.mnt-old, html.dark .mnt-old { color: #fff; background: #b91c1c; border-color: #ef4444; }
+.mnt-new, html.dark .mnt-new { color: #fff; background: #15803d; border-color: #4ade80; }
+.mnt-old b { text-decoration-color: #fecaca; }
+.mnt-move-arrow { color: var(--mt-text); }
+.mnt-steps li { color: var(--mt-text); padding: 10px 12px; border-radius: 12px; border-left: 5px solid; background: rgba(255, 255, 255, 0.55); }
+html.dark .mnt-steps li { background: rgba(2, 6, 23, 0.55); }
+.mnt-steps li:nth-child(1) { border-color: #2563eb; }
+.mnt-steps li:nth-child(2) { border-color: #d97706; }
+.mnt-steps li:nth-child(3) { border-color: #16a34a; }
+.mnt-steps li:nth-child(1) b { color: #1d4ed8; }
+.mnt-steps li:nth-child(2) b { color: #b45309; }
+.mnt-steps li:nth-child(3) b { color: #15803d; }
+html.dark .mnt-steps li:nth-child(1) b { color: #93c5fd; }
+html.dark .mnt-steps li:nth-child(2) b { color: #fcd34d; }
+html.dark .mnt-steps li:nth-child(3) b { color: #86efac; }
+.mnt-steps li b { display: block; }
+.mnt-help { color: var(--mt-text); font-weight: 600; }
+
+/* Steps 1-3: white text on a dark panel in both themes */
+.mnt-steps li, .mnt-steps li b,
+.mnt-steps li:nth-child(n) b,
+html.dark .mnt-steps li:nth-child(n) b { color: #fff; }
+.mnt-steps li, html.dark .mnt-steps li { background: rgba(15, 23, 42, 0.78); }

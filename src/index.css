@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
+@theme { --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif; --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif; --color-brand-300: #93c5fd; --color-brand-500: #3b82f6; }
+body { margin: 0; font-family: var(--font-sans); }
+/* ---- Liquid glass (light and dark) ----
+   One recipe for every glass surface: a bright specular highlight pooled at the top-left, a soft diagonal
+   fill, a lit rim (bright top edge, faint bottom edge), an inner glow, strong blur with boosted saturation,
+   and a deep soft drop shadow. Tokens differ per theme; the surfaces below just consume them. */
+html.dark {
+  --lg-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 45%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  --lg-border: rgba(255, 255, 255, 0.2);
+  --lg-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 28px rgba(255, 255, 255, 0.07), 0 20px 44px -14px rgba(0, 0, 0, 0.55);
+}
+
+html:not(.dark) {
+  --lg-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.95), transparent 45%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.28));
+  --lg-border: rgba(255, 255, 255, 0.85);
+  --lg-shadow:
+    inset 0 1px 0 #fff, inset 0 -1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 28px rgba(255, 255, 255, 0.55), 0 20px 44px -16px rgba(51, 65, 120, 0.35);
+}
