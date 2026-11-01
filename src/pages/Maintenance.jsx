@@ -31,7 +31,6 @@ export default function Maintenance() {
           <ol className="mnt-steps mnt-reveal" style={{ '--i': 4 }}>
             <li><i className="s1">1</i><span><b>Everything moved.</b>Packages, services and contact are all on jmglori.com now.</span></li>
             <li><i className="s2">2</i><span><b>Update your bookmarks.</b>Use jmglori.com from now on.</span></li>
-            <li><i className="s3">3</i><span><b>Clients</b>Sign in at jmglori.com with the same account. Nothing else changes.</span></li>
           </ol>
 
           <p className="mnt-help mnt-reveal" style={{ '--i': 5 }}>Need help? Contact us:</p>
